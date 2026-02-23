@@ -1,97 +1,210 @@
-This is a new [**React Native**](https://reactnative.dev) project, bootstrapped using [`@react-native-community/cli`](https://github.com/react-native-community/cli).
+# JVM Target Mismatch in React Native (Android)
 
-# Getting Started
+## Overview
 
-> **Note**: Make sure you have completed the [Set Up Your Environment](https://reactnative.dev/docs/set-up-your-environment) guide before proceeding.
+This repository demonstrates a build failure caused by a mismatch between:
 
-## Step 1: Start Metro
+- Java compilation target version
+- Kotlin JVM target version
 
-First, you will need to run **Metro**, the JavaScript build tool for React Native.
-
-To start the Metro dev server, run the following command from the root of your React Native project:
-
-```sh
-# Using npm
-npm start
-
-# OR using Yarn
-yarn start
+The error reproduced in the `error` branch is:
+```
+Inconsistent JVM-target compatibility detected for tasks
+'compileDebugJavaWithJavac' (1.8) and
+'compileDebugKotlin' (17)
 ```
 
-## Step 2: Build and run your app
+This document explains:
 
-With Metro running, open a new terminal window/pane from the root of your React Native project, and use one of the following commands to build and run your Android or iOS app:
+- What causes the error
+- Why it happens
+- Why it does NOT always appear in React Native projects
+- How to fix it properly
 
-### Android
 
-```sh
-# Using npm
-npm run android
+------------------------------------------------------------
 
-# OR using Yarn
-yarn android
+## What Causes This Error?
+
+In Android builds, both Java and Kotlin code are compiled to JVM bytecode.
+
+Each compiler has a target:
+
+- Java → defined in `compileOptions`
+- Kotlin → defined in `kotlinOptions.jvmTarget`
+
+If these targets are different, Gradle may fail the build with:
+```
+Inconsistent JVM-target compatibility detected
 ```
 
-### iOS
+Example mismatch:
 
-For iOS, remember to install CocoaPods dependencies (this only needs to be run on first clone or after updating native deps).
+Java:
+    sourceCompatibility = JavaVersion.VERSION_1_8
+    targetCompatibility = JavaVersion.VERSION_1_8
 
-The first time you create a new project, run the Ruby bundler to install CocoaPods itself:
+Kotlin:
+    jvmTarget = "17"
 
-```sh
-bundle install
-```
+This produces:
 
-Then, and every time you update your native dependencies, run:
+Java bytecode → 1.8
+Kotlin bytecode → 17
 
-```sh
-bundle exec pod install
-```
+Gradle considers this inconsistent.
 
-For more information, please visit [CocoaPods Getting Started guide](https://guides.cocoapods.org/using/getting-started.html).
 
-```sh
-# Using npm
-npm run ios
+------------------------------------------------------------
 
-# OR using Yarn
-yarn ios
-```
+## Why This Is Confusing in React Native Projects
 
-If everything is set up correctly, you should see your new app running in the Android Emulator, iOS Simulator, or your connected device.
+React Native’s Gradle Plugin automatically aligns Java and Kotlin versions by default.
 
-This is one way to run your app — you can also build it directly from Android Studio or Xcode.
+That means:
 
-## Step 3: Modify your app
+Even if you configure:
 
-Now that you have successfully run the app, let's make changes!
+    Java → 1.8
+    Kotlin → 17
 
-Open `App.tsx` in your text editor of choice and make some changes. When you save, your app will automatically update and reflect these changes — this is powered by [Fast Refresh](https://reactnative.dev/docs/fast-refresh).
+React Native may silently adjust one of them so they match.
 
-When you want to forcefully reload, for example to reset the state of your app, you can perform a full reload:
+Because of this automatic alignment, many developers never see the mismatch error.
 
-- **Android**: Press the <kbd>R</kbd> key twice or select **"Reload"** from the **Dev Menu**, accessed via <kbd>Ctrl</kbd> + <kbd>M</kbd> (Windows/Linux) or <kbd>Cmd ⌘</kbd> + <kbd>M</kbd> (macOS).
-- **iOS**: Press <kbd>R</kbd> in iOS Simulator.
 
-## Congratulations! :tada:
+------------------------------------------------------------
 
-You've successfully run and modified your React Native App. :partying_face:
+## How the Error Was Reproduced
 
-### Now what?
+To force the error, we disabled React Native’s automatic version alignment.
 
-- If you want to add this new React Native code to an existing application, check out the [Integration guide](https://reactnative.dev/docs/integration-with-existing-apps).
-- If you're curious to learn more about React Native, check out the [docs](https://reactnative.dev/docs/getting-started).
+In `gradle.properties`:
 
-# Troubleshooting
+    react.internal.disableJavaVersionAlignment=true
 
-If you're having issues getting the above steps to work, see the [Troubleshooting](https://reactnative.dev/docs/troubleshooting) page.
+Then we explicitly configured:
 
-# Learn More
+In `app/build.gradle`:
 
-To learn more about React Native, take a look at the following resources:
+Java:
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
 
-- [React Native Website](https://reactnative.dev) - learn more about React Native.
-- [Getting Started](https://reactnative.dev/docs/environment-setup) - an **overview** of React Native and how setup your environment.
-- [Learn the Basics](https://reactnative.dev/docs/getting-started) - a **guided tour** of the React Native **basics**.
-- [Blog](https://reactnative.dev/blog) - read the latest official React Native **Blog** posts.
-- [`@facebook/react-native`](https://github.com/facebook/react-native) - the Open Source; GitHub **repository** for React Native.
+Kotlin:
+    kotlinOptions {
+        jvmTarget = "17"
+    }
+
+After cleaning all Gradle caches and rebuilding:
+
+    ./gradlew clean
+    ./gradlew assembleDebug
+
+The build failed with:
+
+    Inconsistent JVM-target compatibility detected
+
+
+------------------------------------------------------------
+
+## Why This Happens Technically
+
+Java compiler → produces bytecode targeting a specific JVM version.
+Kotlin compiler → also produces bytecode targeting a JVM version.
+
+If:
+    Java target = 1.8
+    Kotlin target = 17
+
+You end up mixing bytecode levels inside the same module.
+
+Gradle 8+ performs stricter validation and fails the build
+instead of allowing potentially incompatible bytecode.
+
+
+------------------------------------------------------------
+
+## Why Some Developers Encounter This
+
+This issue typically appears when:
+
+- Migrating to a newer Kotlin version
+- Upgrading Android Gradle Plugin
+- Upgrading Gradle
+- Using Java 17 locally
+- Disabling React Native alignment
+- Having custom Gradle configurations
+
+
+------------------------------------------------------------
+
+## How to Fix Properly
+
+The fix is simple:
+
+Make Java and Kotlin targets identical.
+
+Recommended modern configuration (Java 17):
+
+In `app/build.gradle`:
+
+    android {
+        compileOptions {
+            sourceCompatibility JavaVersion.VERSION_17
+            targetCompatibility JavaVersion.VERSION_17
+        }
+    }
+
+    tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+        kotlinOptions {
+            jvmTarget = "17"
+        }
+    }
+
+After aligning both to 17:
+
+    ./gradlew clean
+    ./gradlew assembleDebug
+
+Build succeeds.
+
+
+------------------------------------------------------------
+
+## Branch Structure in This Repository
+
+main  → Contains the FIX (aligned Java and Kotlin versions)
+error → Contains the MISCONFIGURATION that reproduces the failure
+
+
+------------------------------------------------------------
+
+## Key Takeaways
+
+1. Java and Kotlin must compile to the same JVM target.
+2. React Native normally hides this issue via automatic alignment.
+3. Disabling alignment exposes real configuration mismatches.
+4. Gradle 8+ enforces stricter JVM target validation.
+5. Always align:
+       Java compileOptions
+       Kotlin jvmTarget
+
+
+------------------------------------------------------------
+
+## Final Recommendation
+
+For modern React Native Android projects:
+
+Use Java 17 consistently across:
+
+- compileOptions
+- kotlinOptions.jvmTarget
+- Local JDK version
+
+Avoid mixing 1.8 and 17.
+
+Consistency prevents subtle and hard-to-debug build failures.
