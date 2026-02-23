@@ -7,8 +7,8 @@
 ## 📋 Table of Contents
 
 - [What Is the Error?](#-what-is-the-error)
-- [Background: How Android Builds Work](background-how-android-builds-work)
-- [What Causes the Mismatch?](what-causes-the-mismatch)
+- [Background: How Android Builds Work](#-background-how-android-builds-work)
+- [What Causes the Mismatch?](#-what-causes-the-mismatch)
 - [Why You Might Never Have Seen This Before](#-why-you-might-never-have-seen-this-before)
 - [How to Reproduce It](#-how-to-reproduce-it)
 - [How to Fix It](#-how-to-fix-it)
@@ -31,7 +31,7 @@ This means your **Java code** and **Kotlin code** are being compiled to differen
 
 ---
 
-## 🏗️ Background: How Android Builds Work
+## 👀 Background: How Android Builds Work
 
 To understand this error, it helps to know what happens when you build an Android app:
 
@@ -53,7 +53,7 @@ Both compilers must output bytecode targeting the **same JVM version**. Think of
 
 ---
 
-## ⚠️ What Causes the Mismatch?
+## 🔴 What Causes the Mismatch?
 
 In `app/build.gradle`, you configure each compiler separately:
 
